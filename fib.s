@@ -1,0 +1,23 @@
+# Calculate the Fibonacci sequence until carry set
+# 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233
+#
+START:  LD	ONE
+	STO	NUM1
+	STO	NUM2			# Set NUM1 and NUM2 to 1
+LOOP:	LD	NUM1
+	STO	NUM3			# NUM3 = NUM1
+	LD	NUM2
+	ADD	NUM3			# NUM3 = NUM1 + NUM2
+	JC	END			# Halt on carry
+	LD	NUM2
+	STO	NUM1			# NUM1 = NUM2
+	LD	NUM3
+	SHO	
+	STO	NUM2			# NUM2 = NUM3
+	JMP	LOOP
+END:	JMP	END
+ONE:	DATA	1
+
+NUM1:	MEMLOC
+NUM2:	MEMLOC
+NUM3:	MEMLOC

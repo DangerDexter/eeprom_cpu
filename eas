@@ -1,0 +1,195 @@
+#!/usr/bin/perl
+#
+# EEPROM Assembler and Simulator
+# (c) 2017 Warren Toomey, GPL3
+#
+use strict;
+use warnings;
+use Data::Dumper;
+
+my @Inst;
+my %Label;
+my @RAM;
+
+my %Opcode = (
+    ADD => 0,  SUB => 1,  AND => 2,  OR  => 3,
+    XOR => 4,  INC => 5,  DEC => 6,  STO => 7,
+    LD  => 8,  JMP => 9,  JZ  => 10, JNE => 11,
+    JC  => 12, JV  => 13, SHO => 14, HLT => 15
+);
+
+die("Usage: $0 infile\n") if ( @ARGV != 1 );
+
+# Reversed opcode
+my @Revop;
+foreach my $k ( keys(%Opcode) ) { $Revop[ $Opcode{$k} ] = $k; }
+
+# Read in the instructions
+open( my $IN, "<", $ARGV[0] ) || die("Cannot read $ARGV[0]: $!\n");
+while (<$IN>) {
+    chomp;
+    s{\s*#.*}{};    	# Lose comments
+    next if (m{^$});    # Ignore empty lines
+    push( @Inst, $_ );
+}
+close($IN);
+#print Dumper( \@Inst );
+
+# First pass: find the labels
+my $PC      = 0;
+my $dataloc = 2048;
+
+foreach my $i (@Inst) {
+    my ( $label, $op, $addr ) = split( m{\s+}, $i );
+    $label =~ s{:}{};
+
+    #print("PC $PC, dataloc $dataloc: $label then $op then $addr\n");
+    if ($label) {    			# Save location of label
+        $Label{$label} = ( $op eq "MEMLOC" ) ? $dataloc : $PC;
+    }
+    $PC += ( $op eq "DATA" ) ? 1 : 2; 	   # Increment the PC
+    $dataloc++ if ( $op eq "MEMLOC" );     # Move up to next RAM location
+}
+#print Dumper(\%Label);
+
+# Second pass: parse lines into hex values
+$PC      = 0;
+$dataloc = 2048;
+
+foreach my $i (@Inst) {
+    my ( $label, $op, $addr ) = split( m{\s+}, $i );
+    if ( $op eq "MEMLOC" ) { $RAM[$dataloc] = $addr; }
+    elsif ( $op eq "DATA" ) { $RAM[$PC] = $addr; }
+    else {
+        die("Undefined opcode $op\n") if ( !defined( $Opcode{$op} ) );
+        die("Undefined label $addr\n")
+          if ( $addr && !defined( $Label{$addr} ) );
+
+	# We have to calculate $addr-1 for jumps, as the PC logic
+	# does a +1 before using it
+	my $irmar= $Label{$addr} || 0;		# || 0 for missing labels
+ 	$irmar-- if ($op=~ m{^J});
+	$irmar &= 0xfff;			# Keep 12 bits only
+
+        $RAM[$PC] = ( $Opcode{$op} << 4 ) + ( $irmar >> 8 );
+        $RAM[ $PC + 1 ] = $irmar & 0xff;
+    }
+    $PC += ( $op eq "DATA" ) ? 1 : 2; 	   # Increment the PC
+    $dataloc++ if ( $op eq "MEMLOC" );     # Move up to next RAM location
+}
+
+# Dump the RAM up to current PC
+my $i = 0;
+while (1) {
+    # First check if there is anything on this row
+    my $skip = 1;
+    foreach my $j ( 0 .. 15 ) {
+        $skip = 0 if ( $RAM[ $i + $j ] );
+    }
+    if ( $skip == 0 ) {
+        printf( "%03x: ", $i );
+        foreach my $j ( 0 .. 15 ) { printf( "%02x ", $RAM[ $i + $j ] || 0 ); }
+        print("\n");
+    }
+    $i += 16;
+    last if ( $i > $PC );
+}
+
+# Write out the program ROM
+open( my $OUT, ">", "program.rom" ) || die("Can't write to program.rom: $!\n");
+print( $OUT "v2.0 raw\n" );
+for my $i ( 0 .. ( 2**11 - 1 ) ) {
+    printf( $OUT "%x ", $RAM[$i] ? $RAM[$i] : 0 );
+    print( $OUT "\n" ) if ( ( $i % 8 ) == 7 );
+}
+close($OUT);
+
+# Simulate
+print("\nSimulating\n");
+$PC = 0;
+my ( $A, $N, $Z, $V, $C ) = ( 0, 0, 0, 0, 0 );
+while (1) {
+    # Keep 12 bits in PC, needed for when we +1 to the PC below
+    $PC &= 0xfff;
+print("PC is $PC\n");
+    my $op = $Revop[ $RAM[$PC] >> 4 ];
+    my $addr = ( ( $RAM[$PC] & 0xf ) << 8 ) + $RAM[ $PC + 1 ];
+    printf( "%03x: %3s %03x\t", $PC, $op, $addr );
+
+    if ( $op eq "HLT" ) { print("Halting\n"); exit(0); }
+    if ( $op eq "JMP" ) {
+	if ($PC == ($addr+1)) {
+	  print("Infinite loop detected, halting\n"); exit(0);
+	}
+	$PC = $addr+1; printf( "PC now %03x\n", $PC ); next;
+    }
+    if ( $op eq "JZ" ) {
+        $PC = $addr+1 if ($Z); printf( "PC now %03x\n", $PC );
+        next if ($Z);
+    }
+    if ( $op eq "JNE" ) {
+        $PC = $addr+1 if ($N); printf( "PC now %03x\n", $PC );
+        next if ($N);
+    }
+    if ( $op eq "JC" ) {
+        $PC = $addr+1 if ($C); printf( "PC now %03x\n", $PC );
+        next if ($C);
+    }
+    if ( $op eq "JV" ) {
+        $PC = $addr+1 if ($V); printf( "PC now %03x\n", $PC );
+        next if ($V);
+    }
+
+    if ( $op eq "LD" ) {
+        $A = $RAM[$addr]; printf( "A now %02x\n", $A );
+    }
+    if ( $op eq "STO" ) {
+        $RAM[$addr] = $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+    }
+    if ( $op eq "AND" ) {
+        $RAM[$addr] &= $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+    }
+    if ( $op eq "OR" ) {
+        $RAM[$addr] |= $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+    }
+    if ( $op eq "XOR" ) {
+        $RAM[$addr] ^= $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+    }
+
+    # Do addition and subtraction
+    my $a = $RAM[$addr];
+    my $b = $A;
+    if ( $op eq "INC" ) { $b = 1; $op = "ADD"; }
+    if ( $op eq "DEC" ) { $b = 1; $op = "SUB"; }
+
+    if ( $op eq "ADD" ) {
+        my $sum = $RAM[$addr] += $A;
+        $C = 1 if ( $sum & 0x100 );
+
+        my $asign = $a & 0x80;
+        my $bsign = $b & 0x80;
+        my $rsign = $sum & 0x80;
+        $V = 1 if ( ( $asign == $bsign ) && ( $rsign != $asign ) );
+
+        $RAM[$addr] = $sum & 0xff;
+        printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+    }
+    if ( $op eq "SUB" ) {
+        my $sum = $RAM[$addr] -= $A;
+        $C = 1 if ( $sum & 0x100 );
+
+        my $asign = $a & 0x80;
+        my $bsign = $b & 0x80;
+        my $rsign = $sum & 0x80;
+        $V = 1 if ( ( $asign == $bsign ) && ( $rsign != $asign ) );
+
+        $RAM[$addr] = $sum & 0xff;
+        printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+    }
+    if ( $op eq "SHO" ) { printf( "\t\tShowing %02x\n", $A ); }
+
+    $Z = ( $RAM[$addr] == 0 ) ? 1 : 0;
+    $N = ( $RAM[$addr] < 0 )  ? 1 : 0;
+    $PC += 2;
+}
+exit(0);

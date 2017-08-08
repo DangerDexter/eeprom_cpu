@@ -1,0 +1,137 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+#
+# Generate contents of the Control ROM
+#
+# 10 bits of input: phase (2), opcode (4), NVZC (4)
+#
+# 11 bits of output: SHOload, RAMwrite, FlagWr, Aload, MARload,
+#		     IRload, PCload, PCctrl, also ALUop (3)
+#
+#
+# Phase 3: Write ALU result to RAM, overwrite PC
+#
+use constant {
+  SHOload =>  1 << 7,
+  RAMwrite => 1 << 6,
+  FlagWr =>   1 << 5,
+  Aload =>    1 << 4,
+  MARload =>  1 << 3,
+  IRload =>   1 << 2,
+  PCload =>   1 << 1,
+  PCctrl =>   1,
+
+  N => 8,
+  Z => 4,
+  V => 2,
+  C => 1
+};
+
+my @TOPROM;
+my @BOTROM;
+
+my %Opcode = (
+    ADD => 0, SUB => 1, AND => 2, OR  => 3,  XOR => 4,  INC => 5,  DEC => 6,
+    STO => 7, LD  => 8, JMP => 9, JZ  => 10, JNE => 11, JC  => 12, JV => 13,
+    SHO => 14, HLT => 15
+);
+
+# Reversed opcode
+my @Revop;
+foreach my $k ( keys(%Opcode) ) {
+    $Revop[ $Opcode{$k} ] = $k;
+}
+
+# Hand-created list of specific flags
+my %Handflag;
+
+#        phase opcode nzvc
+#$Handflag{}
+
+foreach my $phase (0 .. 3) {
+  foreach my $opcode (0 .. 15) {
+    my $op= $Revop[ $opcode ];
+    foreach my $nzvc (0 .. 15) {
+      my $addr= ($phase << 8) + ($opcode << 4) + $nzvc;
+      my $romval=0;
+
+      # Phase 0: load IR from data bus using PC, PC++
+      if ($phase==0) {
+	$romval= IRload + PCload;
+	$BOTROM[$addr]= $romval; next;
+      }
+
+      # Phase 1: load MAR from data bus using PC, PC++
+      if ($phase==1) {
+	$romval= MARload + PCload;
+	$BOTROM[$addr]= $romval; next;
+      }
+
+      # Phase 2: do ALU work, save result
+      if ($phase==2) {
+	# Set the ALU operation
+	$TOPROM[$addr]= $opcode & 0x7;
+
+	# Use the MAR as the address to ROM/RAM
+	$romval= PCctrl;
+
+	# Save the ALU flags and result if an ALU opcode
+	if ($opcode < 8) {
+	  $romval += FlagWr;
+	}
+
+	# If LD, set Aload
+	$romval += Aload if ($op eq 'LD');
+
+	# If SHO, set SHOload
+	$romval += SHOload if ($op eq 'SHO');
+
+	# JMP: set PCload
+	$romval += PCload if ($op eq 'JMP');
+
+	# JZ: set PCload if Z
+	$romval += PCload if (($op eq 'JZ') && ($nzvc & Z));
+
+	# JNE: set PCload if N
+	$romval += PCload if (($op eq 'JNE') && ($nzvc & N));
+
+	# JV: set PCload if V
+	$romval += PCload if (($op eq 'JV') && ($nzvc & V));
+
+	# JC: set PCload if C
+	$romval += PCload if (($op eq 'JC') && ($nzvc & C));
+
+	$BOTROM[$addr]= $romval; next;
+      }
+
+      # Phase 3
+      # Set RAMwrite for ALUops
+      if ($opcode < 8) {
+        $romval = RAMwrite + PCctrl;
+	printf("RAMWrite set at location %x: %x\n", $addr, $romval);
+      }
+      $BOTROM[$addr]= $romval;
+    }
+  }
+}
+
+# Write out the ROMs
+open( my $OUT, ">", "botctrl.rom" ) || die("Can't write to botctrl.rom: $!\n");
+print( $OUT "v2.0 raw\n" );
+for my $i ( 0 .. ( 2**10 - 1 ) ) {
+    printf( $OUT "%x ", $BOTROM[$i] ? $BOTROM[$i] : 0 );
+    print( $OUT "\n" ) if ( ( $i % 8 ) == 7 );
+}
+close($OUT);
+
+open($OUT, ">", "topctrl.rom" ) || die("Can't write to topctrl.rom: $!\n");
+print( $OUT "v2.0 raw\n" );
+for my $i ( 0 .. ( 2**10 - 1 ) ) {
+    printf( $OUT "%x ", $TOPROM[$i] ? $TOPROM[$i] : 0 );
+    print( $OUT "\n" ) if ( ( $i % 8 ) == 7 );
+}
+close($OUT);
+
+exit(0);
+
