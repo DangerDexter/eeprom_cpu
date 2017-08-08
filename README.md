@@ -19,22 +19,24 @@ My CPU is an 8-bit CPU with a 12-bit address space. There are sixteen opcodes, o
 
 Here is the list of op-codes at present:
 
-1. ADD	mem[address] += A
-2. SUB	mem[address] -= A
-3. AND	mem[address] &= A
-4. OR	mem[address] |= A
-5. XOR	mem[address] ^= A
-6. INC	mem[address] += 1
-7. DEC	mem[address] -= 1
-8. STO	mem[address] = A
-9. LD	A= mem[address]
-10. JMP	PC= address always
-11. JZ      PC= address if zero
-12. JNE	PC= address if negative
-13. JC	PC= address if carry
-14. JV	PC= address if overflow
-15. SHO	Display the A register
-16. HLT	Halt CPU
+| Mnemonic | 	   Action 		|
+|:--------:|:--------------------------:|
+| ADD addr | mem[address] += A		|
+| SUB addr | mem[address] -= A		|
+| AND addr | mem[address] &= A		|
+| OR addr  | mem[address] |= A		|
+| XOR addr | mem[address] ^= A		|
+| INC addr | mem[address] += 1		|
+| DEC addr | mem[address] -= 1		|
+| STO addr | mem[address] = A		|
+| LD addr  | A= mem[address]		|
+| JMP addr | PC= address always		|
+| JZ addr  | PC= address if zero	|
+| JNE addr | PC= address if negative	|
+| JC addr  | PC= address if carry	|
+| JV addr  | PC= address if overflow	|
+| SHO	   | Display the A register	|
+| HLT	   | Halt CPU			|
 
 The SHO instruction latches the value in the A register into a two-digit hex display, and this is the only output device at present. The HLT instruction really only works in the simulator at present; in the breadboard build I would expect to have to do a JMP to the same instruction (an infinite loop).
 
@@ -138,16 +140,16 @@ I also have a working Logisim version of the CPU. I’ve written Perl scripts to
 
 Here is my estimate of the chips I need to build this. I could have this all wrong, so I’d love some feedback on if this is right, slightly off or in fact completely wrong:
 
-+ four 8-bit registers: IR, MAR, A, ALUout, 74LS273
-+ one tri-state buffer, 74LS245
-+ one inverter, 74LS04
-+ three 2-line to 1-line quad mux chips for PC logic, 74LS157
-+ three counters for the PC logic, 74LS163
-+ one counter for the phase, 74LS163
-+ one 2K x 8 ROM for instruction storage, AT28C64B or AT28C16 ?
-+ one 2K x 8 RAM, M48Z02-150PC1
-+ two 1K x 8 ROMs for the control logic, AT28C64B
-+ two 8K x 8 ROMs for the ALU, AT28C64B
+| four 8-bit registers: IR, MAR, A, ALUout | 74LS273 |
+| one tri-state buffer | 74LS245 |
+| one inverter | 74LS04 |
+| three 2-line to 1-line quad mux chips for PC logic | 74LS157 |
+| three counters for the PC logic | 74LS163 |
+| one counter for the phase | 74LS163 |
+| one 2K x 8 ROM for instruction storage | AT28C64B or AT28C16 ? |
+| one 2K x 8 RAM | M48Z02-150PC1 |
+| two 1K x 8 ROMs for the control logic | AT28C64B |
+| two 8K x 8 ROMs for the ALU | AT28C64B |
  
 That’s 19 chips for the CPU proper. For the clock and the SHO output, I probably also need:
 
