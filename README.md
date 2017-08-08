@@ -4,7 +4,12 @@
 
 # Introduction: 8th August 2017
 
-I stumbled across Ben Eater’s video series on building a working CPU on a breadboard. I had already built some CPUs in the Logisim simulator and on an FPGA, but I hadn’t actually done the wiring by hand.
+I stumbled across
+[Ben Eater’s video series on building a working CPU](https://eater.net/8bit/)
+on a breadboard. I had already built some CPUs in the
+[Logisim simulator](http://minnie.tuhs.org/CompArch/Tutes/week03.html) and on
+[an FPGA](http://minnie.tuhs.org/Programs/UcodeCPU/index.html),
+but I hadn’t actually done the wiring by hand.
 I felt constrained by the memory limitations of this Simple As Possible (SAP) CPU, so I decided to design an 8-bit CPU with more instructions and with a larger address space. At the same time, I wondered how few chips I could get away with in the design. Right now, I’m down around 19 chips (on paper) for the CPU proper, not including any I/O or clock circuitry. Here is a quick run-down of the design.
 
 My CPU is an 8-bit CPU with a 12-bit address space. There are sixteen opcodes, of which eight of them are ALU operations. There is only one user-visible register, the A register. Each instruction is 16 bits (two bytes) in size:
@@ -53,7 +58,8 @@ I haven’t shown the control logic or the control signals yet; these will be co
 
 I wanted my CPU to have a reasonable set of ALU operations. At first I thought I could use a couple of 74LS181 4-bit ALU. However, they are no longer made, and I couldn’t find any other 4-bit or 8-bit ALUs. So I had to design my own.
 
-A proper ALU with several operations is going to be expensive chip-wise if I built it using the available 7400 series ICs. Then I came across Dieter Mueller’s articles on designing an ALU using EEPROMs.
+A proper ALU with several operations is going to be expensive chip-wise if I built it using the available 7400 series ICs. Then I came across Dieter Mueller’s articles on
+[designing an ALU using EEPROMs](http://6502.org/users/dieter/).
 
 Of course! An ALU is just a combinatorial circuit that takes input bits and produces output bits. That’s also what an EEPROM does.
 
