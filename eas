@@ -111,7 +111,6 @@ my ( $A, $N, $Z, $V, $C ) = ( 0, 0, 0, 0, 0 );
 while (1) {
     # Keep 12 bits in PC, needed for when we +1 to the PC below
     $PC &= 0xfff;
-print("PC is $PC\n");
     my $op = $Revop[ $RAM[$PC] >> 4 ];
     my $addr = ( ( $RAM[$PC] & 0xf ) << 8 ) + $RAM[ $PC + 1 ];
     printf( "%03x: %3s %03x\t", $PC, $op, $addr );
