@@ -140,6 +140,7 @@ I also have a working Logisim version of the CPU. I’ve written Perl scripts to
 
 Here is my estimate of the chips I need to build this. I could have this all wrong, so I’d love some feedback on if this is right, slightly off or in fact completely wrong:
 
+|:--------|:--------------------------:|
 | four 8-bit registers: IR, MAR, A, ALUout | 74LS273 |
 | one tri-state buffer | 74LS245 |
 | one inverter | 74LS04 |
