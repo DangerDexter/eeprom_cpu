@@ -169,6 +169,8 @@ That’s 19 chips for the CPU proper. For the clock and the SHO output, I probab
 
 That’s about another six chips, so a total of 25-ish chips for the CPU, clock and output. Does this sound reasonable?
 
+![running Fibonacci](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/fibonacci_run.gif)
+
 Next tasks:
 + fully test the design in Logisim: ensure all instructions work as expected
 + get some real logic designers to review my design and see if it makes sense
