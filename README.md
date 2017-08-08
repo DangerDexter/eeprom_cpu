@@ -35,6 +35,8 @@ The SHO instruction latches the value in the A register into a two-digit hex dis
 
 # The Top-level Design
 
+![main design](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/main.png)
+
 Above is the top-level design of the CPU. I’m only showing the data paths in the diagram. There is a 2K x 8 ROM and a 2K x 8 RAM, both connected to the horizontal data bus. The data bus is connected to the Instruction Register (IR), a Memory Access Register (MAR), the A register and as one input to the ALU.
 
 The value in the IR is split in half. The top half of the IR is the 4-bit instruction opcode. The lower four bits is combined with the MAR value to be the 12-bit address used to access memory: the IRMAR value.
@@ -61,6 +63,8 @@ I’ve chosen to implement this using two EEPROMs. Each one acts as a 4-bit ALU:
 
 Below is the current ALU design as implemented in Logisim.
 
+![ALU](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/alu.png)
+
 The ALU operation and the two operands come in from the left: Arg1 and Arg2. These are split into 4-bit low and high nibbles, and these nibbles are distributed to the two ALUs. The ROMs looks up and outputs the 4-bit results and the four flag values. The Z and C flags from the lower ALU are cascaded up as inputs to the higher ALU. The low and high ALU results are combined are stored in an 8-bit register. The top NZVC flags are stored in a 4-bit register.
 
 The ALU operations are:
@@ -79,6 +83,8 @@ The Arg1 input is wired to the data bus, and the Arg2 input is wired to the A re
 As the EEPROM is programmable, any set of eight operations on two 4-bit inputs can be programmed into the EEPROM.
 
 # The PC Logic
+
+![PC logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/pclogic.png)
 
 Above is the PC logic as implemented in Logisim. The multiplexer passes either the PC value or the IRMAR value out to the ROM and RAM, controlled by the PCctrl control line. The adder increments the PC’s value based on the PCload control line.
 
@@ -104,6 +110,8 @@ If you look at the design so far, there is very little combinatorial logic: a tr
 We have to enable and disable all of these in some sequence in order to perform each CPU instruction. One way to build this logic would be to hard-wire a bunch of logic gates, but this would  violate my design goal of a minimal number of chips.
 
 Instead, I’ve implemented my control logic with some EEPROMs as shown below.
+
+![Control logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/control.png)
 
 There is a 2-bit counter that produces four phases in each instruction. The phase, plus the current instruction opcode and the value of the NZVC flags go into the two EEPROMs. These look up the appropriate control line values for this opcode/phase/NZVC combination.
 
