@@ -2,7 +2,7 @@
 
 ## Warren Toomey, © 2017, GPL3
 
-# Introduction: 8th August 2017
+# Introduction: 22nd August 2017
 
 I stumbled across
 [Ben Eater’s video series on building a working CPU](https://eater.net/8bit/)
@@ -10,49 +10,99 @@ on a breadboard. I had already built some CPUs in the
 [Logisim simulator](http://minnie.tuhs.org/CompArch/Tutes/week03.html) and on
 [an FPGA](http://minnie.tuhs.org/Programs/UcodeCPU/index.html),
 but I hadn’t actually done the wiring by hand.
-I felt constrained by the memory limitations of this Simple As Possible (SAP) CPU, so I decided to design an 8-bit CPU with more instructions and with a larger address space. At the same time, I wondered how few chips I could get away with in the design. Right now, I’m down around 19 chips (on paper) for the CPU proper, not including any I/O or clock circuitry. Here is a quick run-down of the design.
+I felt constrained by the memory limitations of this Simple As Possible (SAP) CPU, so I decided to design an 8-bit CPU with more instructions and with a larger address space. At the same time, I wondered how few chips I could get away with in the design. Right now, the CPU is about 30 chips, not including any I/O or
+clock circuitry. Here is a quick run-down of the design.
 
-My CPU is an 8-bit CPU with a 12-bit address space. There are sixteen opcodes, of which eight of them are ALU operations. There is only one user-visible register, the A register. Each instruction is 16 bits (two bytes) in size:
+My CPU is an 8-bit CPU with a 16-bit address space. There are 64 instructions,
+and eight ALU operations. There are two user-visible register, the A register
+and the B register.
 
-+ the top four bits encode the sixteen opcodes
-+ the remaining 12 bits encode a memory address
+Instructions are 1-byte, 2-bytes or 3-bytes in size:
 
-Here is the list of op-codes at present:
++ the first byte encodes the instruction, although only the first 64
+  values are legal instructions. Single byte instructions operate on
+  the registers, e.g. ADDA performs A= A + B
++ two-byte instructions have a constant in the second byte, e.g.
+  LCA 23 loads the constant 23 into the A register
++ three byte instructions have a memory address stores in the second and
+  third bytes, e.g. JMP 0x2000 jumps to the location 0x2000. Addresses
+  are stored big-endian, i.e. the high byte is stored first in memory.
 
-| Mnemonic | 	   Action 		|
-|:--------:|:--------------------------:|
-| ADD addr | mem[address] += A		|
-| SUB addr | mem[address] -= A		|
-| AND addr | mem[address] &= A		|
-| OR addr  | mem[address] |= A		|
-| XOR addr | mem[address] ^= A		|
-| INC addr | mem[address] += 1		|
-| DEC addr | mem[address] -= 1		|
-| STO addr | mem[address] = A		|
-| LD addr  | A= mem[address]		|
-| JMP addr | PC= address always		|
-| JZ addr  | PC= address if zero	|
-| JNE addr | PC= address if negative	|
-| JC addr  | PC= address if carry	|
-| JV addr  | PC= address if overflow	|
-| SHO	   | Display the A register	|
-| HLT	   | Halt CPU			|
+The two operands for the ALU are the A and B registers. The least significant
+three bits in each instruction encode the ALU operation. The ALU operation is
+not used in every instruction. Here is the list of ALU operations.
 
-The SHO instruction latches the value in the A register into a two-digit hex display, and this is the only output device at present. The HLT instruction really only works in the simulator at present; in the breadboard build I would expect to have to do a JMP to the same instruction (an infinite loop).
+| Operation | 	   ALU Output 		|
+|:---------:|:-------------------------:|
+| ADD       | A + B                     |
+| SUB       | A - B                     |
+| AND       | A & B                     |
+| OR        | A | B                     |
+| XOR       | A ^ B                     |
+| A         | A                         |
+| B         | B                         |
+| B++       | B+1                       |
 
-# The Top-level Design
+As well as an 8-bit output, the ALU produces four flags: zero, negative,
+overflow and carry (NZVC). The overflow and carry flags are only generated
+on the ADD and SUB operations.
+
+For three-byte instructions, the address in the instruction is stored
+in the memory address register (MAR) before the actual work is done.
+
+Here is the current list of instructions:
+
+| Instruction | Action 		|
+|:-----------:|:---------------:|
+| ADDA	| A= A + B              |
+| SUBA	| A= A - B              |
+| ANDA	| A= A & B              |
+| ORA	| A= A | B              |
+| XORA	| A= A ^ B              |
+| JMP   | PC= MAR               |
+| TBA	| A= B                  |
+| INCB	| B++                   |
+| ADDB	| B= A + B              |
+| SUBB	| B= A - B              |
+| ANDB	| B= A & B              |
+| ORB	| B= A | B              |
+| XORB	| B= A ^ B              |
+| TAB	| B= A                  |
+| LCA   | Load constant into A  |
+| LCB   | Load constant into B  |
+| LMA   | A = mem[MAR]          |
+| LMB   | B = mem[MAR]          |
+| SMA	| mem[MAR]= A           |
+| SMB	| mem[MAR]= B           |
+| TTOA	| Send A to the terminal |
+| TTOB	| Send B to the terminal |
+| TTIA	| Read A from the terminal |
+| TTIB	| Read B from the terminal |
+| JLT	| PC= MAR if N set       |
+| JEQ	| PC= MAR if Z set       |
+| JNE	| PC= MAR if Z clear     |
+| JGE	| PC= MAR if N clear     |
+| JLE	| PC= MAR if either Z or N are set |
+| JGT	| PC= MAR if both Z and N are clear |
+| JCS	| PC= MAR if C set       |
+| JVS   | PC= MAR if V set       |
+| JVC   | PC= MAR if V clear     |
+| JCC   | PC= MAR if C clear     |
+| LIA	| A= mem[MAR+B]          |
+| SIA	| mem[MAR+B]= A          |
+| INCM	| mem[MAR]++             |
+| SUB	| A - B, just to set the flags |
+
+# Top-level design
+
 
 ![main design](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/main.png)
 
-Above is the top-level design of the CPU. I’m only showing the data paths in the diagram. There is a 2K x 8 ROM and a 2K x 8 RAM, both connected to the horizontal data bus. The data bus is connected to the Instruction Register (IR), a Memory Access Register (MAR), the A register and as one input to the ALU.
+Above is the top-level design of the CPU. I’m only showing the data bus in the diagram. There is an 8K x 8 ROM and a 8K x 8 RAM, both connected to the horizontal data bus. The data bus is connected to the Instruction Register (IR), a high and low Memory Access Register (MAR), the A register and the B register.
 
 The value in the IR is split in half. The top half of the IR is the 4-bit instruction opcode. The lower four bits is combined with the MAR value to be the 12-bit address used to access memory: the IRMAR value.
 
-The output from the ALU is connected through a tri-state buffer back to the data bus. This allows the ALU to write its result back to RAM.
-
-The only output is a register called Ashow which latches the value in the A register on a SHO instruction. This value is displayed in hex on two 7-segment LEDs.
-
-In the top-left is the PC logic. This chooses either the Program Counter (PC)’s value or the IRMAR value as the address to the RAM and ROM. The top address bit selects either the RAM (value 1) or the ROM (value 0). The PC logic contains the PC itself, a muxer and a counter to increment the PC’s value.
+The output from the ALU is connected through a tri-state buffer back to the data bus. This allows the ALU to write its result back to RAM and into the A and B registers.
 
 I haven’t shown the control logic or the control signals yet; these will be covered below.
 
@@ -75,64 +125,60 @@ Below is the current ALU design as implemented in Logisim.
 
 The ALU operation and the two operands come in from the left: Arg1 and Arg2. These are split into 4-bit low and high nibbles, and these nibbles are distributed to the two ALUs. The ROMs looks up and outputs the 4-bit results and the four flag values. The Z and C flags from the lower ALU are cascaded up as inputs to the higher ALU. The low and high ALU results are combined are stored in an 8-bit register. The top NZVC flags are stored in a 4-bit register.
 
-The ALU operations are:
-
-1. Arg1 + Arg2
-2. Arg1 – Arg2
-3. Arg1 AND Arg2
-4. Arg1 OR Arg2
-5. Arg1 XOR Arg2
-6. Arg1 + 1
-7. Arg1 – 1
-8. Arg2
-
-The Arg1 input is wired to the data bus, and the Arg2 input is wired to the A register, so the last operation allows the A register to be written out through the ALU, and eventually over the data bus and back to memory. The STO instruction is implemented using this ALU operation.
-
 As the EEPROM is programmable, any set of eight operations on two 4-bit inputs can be programmed into the EEPROM.
 
-# The PC Logic
+# The PC and Address Logic
 
 ![PC logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/pclogic.png)
 
-Above is the PC logic as implemented in Logisim. The multiplexer passes either the PC value or the IRMAR value out to the ROM and RAM, controlled by the PCctrl control line. The adder increments the PC’s value based on the PCload control line.
+Above is the PC and address logic as implemented in Logisim. One of three
+address values can be placed on the address bus, which runs vertically in the
+diagram from the multiplexer down to the ROM and RAM. The address value can be:
 
-There is one gotcha. When we do JMP address, the IRMAR address needs to be stored into the PC. However, the adder will add 1 to this value. Therefore, the assembler need to store address-1 in the instruction to circumvent the +1 in the PC logic.
++ the program counter
++ the value of the 16-bit memory address register (MAR)
++ the value of the 16-bit memory address register (MAR) with the B value added in. This allows indexed addressing to be done.
 
-As the data path here is 12-bits, I thought I would need to use an 8-bit register and a 4-bit register for the PC, three 4-bit adder chips and three 4-bit multiplexer chips. That would be eight chips! However, I think I can use three 74LS163 counters for a combination adder/register; this would cut the PC logic down to six chips.
+The PC is implemented as a presettable 16-bit counter. When the PCincr
+control line is enabled, the PC's value increments. When the PCload
+control line is enabled, the PC loads the value from the address bus: this
+is used in the jump instructions.
 
 # The Control Logic
 
-If you look at the design so far, there is very little combinatorial logic: a tri-state buffer, one inverter gate, the two EEPROMs in the ALU and three mux chips in the PC logic. Now we need some serious logic to control all of this. We need these control lines:
+![Control logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/control1.png)
+
+If you look at the design so far, there is very little combinatorial logic: a tri-state buffer, one inverter gate, the two EEPROMs in the ALU and three mux chips in the PC logic. Now we need some serious logic to control all of this. We need these control lines (as shown in the above diagram):
 
 + Clk: the clock that goes to all sequential circuits
-+ PCctrl: send either the PC or the IRMAR value to the RAM/ROM 
-+ PCload: load a new value into the PC
++ PCload: load a new value from the address bus into the PC
++ PCincr: get the PC to increment to the next address
++ RAMwrite: write the value on the data bus into RAM
 + IRload: load the instruction register from the data bus
-+ MARload: load the Memory Address Register from the data bus
++ HMload: load the high byte of the Memory Address Register from the data bus
++ LMload: load the low byte of the Memory Address Register from the data bus
 + Aload: load the A register from the data bus
-+ FlagWr: store the ALU output and the flags in the two registers in the ALU
-+ RAMwrite: write the ALU’s value on the data bus into RAM
-+ SHOload: load the Ashow register when we do the SHO instruction
-+ ALUop (3 bits): The ALU operation to be performed
++ Bload: load the B register from the data bus
++ ALUwrite: place the ALU's output onto the data bus
++ MEMdisa: disable the RAM and ROM, so that the ALU output can be sent to either the A or B registers
++ FlagWr: latch the NZCV flags from the ALU. This allows these to be set in one instruction, e.g. a subtraction, and then tested in a second instruction, e.g. a jump if negative instruction.
++ MAMux (2 bits): Choose either the PC, the MAR, or MAR+B as the address to be placed on the address bus.
 
 We have to enable and disable all of these in some sequence in order to perform each CPU instruction. One way to build this logic would be to hard-wire a bunch of logic gates, but this would  violate my design goal of a minimal number of chips.
 
 Instead, I’ve implemented my control logic with some EEPROMs as shown below.
 
-![Control logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/control.png)
+![Control logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/control2.png)
 
-There is a 2-bit counter that produces four phases in each instruction. The phase, plus the current instruction opcode and the value of the NZVC flags go into the two EEPROMs. These look up the appropriate control line values for this opcode/phase/NZVC combination.
+There is a 3-bit counter that produces eight phases in each instruction. The phase, plus the current instruction opcode and the value of the NZVC flags go into the two EEPROMs. These look up the appropriate control line values for this opcode/phase/NZVC combination.
 
-The four phases are:
+The file `control_logic` holds the list of control lines that are enabled
+or disabled on each phase of each instructions.
 
-+ Phase 0: load the IR register. We enable IRload to load the IR from the data bus, and we enable PCload to increment the PC.
-+ Phase 1: load the MAR register. We enable MARload to load the MAR from the data bus, and we enable PCload to increment the PC.
-+ Phase 2: perform the ALU operation. Typically, PCctrl is set to 1 to send the IRMAR value to the RAM. The data bus now holds a data value from RAM which goes into the ALU. The A register also goes into the ALU, and the ALUop tells the ALU what to do. FlagWr is enabled to latch the ALU’s output and the flag bits. We can’t write the ALU value to RAM yet, because we are already using the data bus to fetch a value from the RAM!
-+ Phase 3: Write the latched ALU value back to RAM: RAMwrite is enabled, and Pcctrl is still keeping IRMAR as the address to the RAM. Alternatively, we are doing one of the “jump” instructions. If the jump instruction matches up with one of the NZVC flags, set PCctrl to 1 and set PCload to 1, so that the PC is loaded from the IRMAR value.
+# Status of the CPU: 22nd August 2017
 
-There are only ten input bits to the two EEPROMs: four opcode bits, four NZVC bits and two phase bits. Unforunately, we need more that eight bits of output; that’s why there are two 1K x 8 EEPROMs.
-
-# Status of the CPU: 8th August 2017
+I haven't written the rest of the document yet, so don't read the stuff
+below.
 
 Here is what I’ve got to so far. I’ve written a Perl script to read in a program in (my own) assembly language and convert this to the binary instructions. The script outputs the code in a format that Logisim can load into a simulated ROM chip. The script also simulates the assembly program: this was useful to confirm that things worked.
 

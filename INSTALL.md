@@ -16,7 +16,7 @@ This will
 + simulate the program. You should see the Fibonacci series being printed out in hexadecimal
 
 Now that you know that the `fib.s` program should run correctly, run Logisim
-and open up the file `eprocpu.circ`. This is the CPU design that I've done so
+and open up the file `ep16cpu.circ`. This is the CPU design that I've done so
 far.
 
 Right-click on the ALU and view the ALU. This should open up a display of the
