@@ -217,8 +217,7 @@ I will need some other components:
 + several LEDs for showing individual lines
 + caps for the 555 circuit
 
-Here is a short video of the CPU in Logisim calculating the Fibonacci
-series (version 1 of the CPU):
+Here is a short video of the CPU in Logisim calculating the Fibonacci series:
 
 ![running Fibonacci](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/fibonacci_run.gif)
 
