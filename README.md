@@ -179,9 +179,6 @@ instruction.
 
 # Status of the CPU: 22nd August 2017
 
-I haven't written the rest of the document yet, so don't read the stuff
-below.
-
 Here is what I’ve got to so far. I’ve written a Perl script to read in a program in (my own) assembly language and convert this to the binary instructions. The script outputs the code in a format that Logisim can load into a simulated ROM chip. The script also simulates the assembly program: this was useful to confirm that things worked.
 
 I also have a working Logisim version of the CPU. I’ve written Perl scripts to generate the contents of the EEPROMs in the ALU and the EEPROMs in the control logic. I’ve been able to run a program to calculate the Fibonacci numbers from 2 up to 0xe9 (233).
