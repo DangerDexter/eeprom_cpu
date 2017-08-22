@@ -1,194 +1,455 @@
 #!/usr/bin/perl
 #
-# EEPROM Assembler and Simulator
-# (c) 2017 Warren Toomey, GPL3
+# Assembler for Warren's 16-bit CPU. (c) 2017, GPL3
 #
 use strict;
 use warnings;
+use Curses;
 use Data::Dumper;
+my ( $debug, $easdebug ) = ( 0, 0 );
 
-my @Inst;
+# List of known labels and their addresses
 my %Label;
-my @RAM;
 
-my %Opcode = (
-    ADD => 0,  SUB => 1,  AND => 2,  OR  => 3,
-    XOR => 4,  INC => 5,  DEC => 6,  STO => 7,
-    LD  => 8,  JMP => 9,  JZ  => 10, JNE => 11,
-    JC  => 12, JV  => 13, SHO => 14, HLT => 15
+# List of instruction names and their length in bytes
+my @Instlist = (
+    [ 'adda', 1 ], [ 'suba', 1 ], [ 'anda', 1 ], [ 'ora',  1 ],
+    [ 'xora', 1 ], [ 'jmp',  3 ], [ 'tba',  1 ], [ 'incb', 1 ],
+    [ 'addb', 1 ], [ 'subb', 1 ], [ 'andb', 1 ], [ 'orb',  1 ],
+    [ 'xorb', 1 ], [ 'tab',  1 ], [ 'lca',  2 ], [ 'lcb',  2 ],
+
+    [ 'addm', 3 ], [ 'subm', 3 ], [ 'andm', 3 ], [ 'orm', 3 ],
+    [ 'xorm', 3 ], [ 'lma',  3 ], [ 'lmb',  3 ], [ 'jlt', 3 ],
+    [ 'jeq',  3 ], [ 'jne',  3 ], [ 'jge',  3 ], [ 'jle', 3 ],
+    [ 'jgt',  3 ], [ 'sma',  3 ], [ 'smb',  3 ], [ 'jcs', 3 ],
+
+    [ 'jvs',  3 ], [ 'jcc',  3 ], [ 'jvc',  3 ], [ 'ttia', 1 ],
+    [ 'ttib', 1 ], [ 'ttoa', 1 ], [ 'ttob', 1 ], [ 'lia',  3 ],
+    [ 'nop',  1 ], [ 'sub',  1 ], [ 'nop',  1 ], [ 'nop',  1 ],
+    [ 'nop',  1 ], [ 'sia',  3 ], [ 'nop',  1 ], [ 'incm', 3 ],
+
+    [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ],
+    [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ],
+    [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ],
+    [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ], [ 'nop', 1 ],
 );
 
+# Given a label or a non-string literal, return its value
+sub getValue {
+    my $arg = shift;
+
+    die("null argument in getValue\n") if ( !defined($arg) );
+
+    # Decimal number
+    return ($arg) if ( $arg =~ m{^\d+$} );
+
+    # Octal or decimal number
+    return ( oct($arg) ) if ( $arg =~ m{^0} );
+
+    # Literal character
+    return ( ord($1) ) if ( $arg =~ m{^'(.)'} );
+
+    # Label
+    return ( $Label{$arg} ) if ( defined( $Label{$arg} ) );
+
+    die("Unrecognised literal or label: $arg\n");
+}
+
+#### MAIN PROGRAM ####
+
+# Enable debugging
+if ( ( @ARGV >= 1 ) && ( $ARGV[0] ) eq "-d" ) {
+    $debug = 1;
+    shift(@ARGV);
+}
+$easdebug = 1 if ( $debug && ( $0 =~ m{eas$} ) );
+
+# Give usage
 die("Usage: $0 infile\n") if ( @ARGV != 1 );
 
-# Reversed opcode
-my @Revop;
-foreach my $k ( keys(%Opcode) ) { $Revop[ $Opcode{$k} ] = $k; }
+# Convert the instruction list into a hash keyed by instruction name
+my %Instruction;
+foreach my $posn ( 0 .. ( $#Instlist - 1 ) ) {
+    my ( $name, $len ) = @{ $Instlist[$posn] };
+    $Instruction{$name} = { posn => $posn, len => $len };
+}
 
 # Read in the instructions
+my @Line;
 open( my $IN, "<", $ARGV[0] ) || die("Cannot read $ARGV[0]: $!\n");
 while (<$IN>) {
     chomp;
     s{\s*#.*}{};    	# Lose comments
     next if (m{^$});    # Ignore empty lines
-    push( @Inst, $_ );
+    push( @Line, $_ );
 }
 close($IN);
-#print Dumper( \@Inst );
 
 # First pass: find the labels
 my $PC      = 0;
-my $dataloc = 2048;
+my $dataloc = 0x8000;
 
-foreach my $i (@Inst) {
+foreach my $i (@Line) {
     my ( $label, $op, $addr ) = split( m{\s+}, $i );
     $label =~ s{:}{};
 
     #print("PC $PC, dataloc $dataloc: $label then $op then $addr\n");
-    if ($label) {    			# Save location of label
-        $Label{$label} = ( $op eq "MEMLOC" ) ? $dataloc : $PC;
+    if ($label) {    # Save location of label
+        if ( $op eq "rombyte" ) {
+            $Label{$label} = $PC; $PC++; next;
+        }
+        if ( $op eq "romword" ) {
+            $Label{$label} = $PC; $PC += 2; next;
+        }
+        if ( $op eq "byte" ) {
+            $Label{$label} = $dataloc; $dataloc++; next;
+        }
+        if ( $op eq "word" ) {
+            $Label{$label} = $dataloc; $dataloc += 2; next;
+        }
+        if ( $op eq "equ" ) {
+            $Label{$label} = getValue($addr); next;
+        }
+        if ( $op eq "string" ) {
+            my $strlen = length($addr) + 1;
+            $Label{$label} = $PC;
+            $PC += $strlen;
+            next;
+        }
     }
-    $PC += ( $op eq "DATA" ) ? 1 : 2; 	   # Increment the PC
-    $dataloc++ if ( $op eq "MEMLOC" );     # Move up to next RAM location
-}
-#print Dumper(\%Label);
 
-# Second pass: parse lines into hex values
+    # We got here with a real instruction. Increment the PC
+    die("Unrecognised instruction $op\n") if ( !defined( $Instruction{$op} ) );
+    if ($label) { $Label{$label} = $PC; }
+    $PC += $Instruction{$op}{len};
+}
+
+
+# Second pass: generate the machine code
+my @RAM;
 $PC      = 0;
-$dataloc = 2048;
+$dataloc = 0x8000;
 
-foreach my $i (@Inst) {
+foreach my $i (@Line) {
     my ( $label, $op, $addr ) = split( m{\s+}, $i );
-    if ( $op eq "MEMLOC" ) { $RAM[$dataloc] = $addr; }
-    elsif ( $op eq "DATA" ) { $RAM[$PC] = $addr; }
-    else {
-        die("Undefined opcode $op\n") if ( !defined( $Opcode{$op} ) );
-        die("Undefined label $addr\n")
-          if ( $addr && !defined( $Label{$addr} ) );
+    $label =~ s{:}{};
 
-	# We have to calculate $addr-1 for jumps, as the PC logic
-	# does a +1 before using it
-	my $irmar= $Label{$addr} || 0;		# || 0 for missing labels
- 	$irmar-- if ($op=~ m{^J});
-	$irmar &= 0xfff;			# Keep 12 bits only
+    if ( $op eq "rombyte" ) { $RAM[ $PC++ ] = getValue($addr); next; }
+    if ( $op eq "romword" ) { $RAM[$PC] = getValue($addr); $PC += 2; next; }
+    if ( $op eq "byte" ) { $dataloc++; next; }
+    if ( $op eq "word" ) { $dataloc += 2; next; }
+    next if ( $op eq "equ" );
 
-        $RAM[$PC] = ( $Opcode{$op} << 4 ) + ( $irmar >> 8 );
-        $RAM[ $PC + 1 ] = $irmar & 0xff;
+    if ( $op eq "string" ) {
+        foreach my $posn ( 0 .. length($addr) ) {
+            $RAM[ $PC++ ] = ord( substr( $addr, $posn, 1 ) );
+        }
+        $RAM[ $PC++ ] = 0; next;    # NUL
     }
-    $PC += ( $op eq "DATA" ) ? 1 : 2; 	   # Increment the PC
-    $dataloc++ if ( $op eq "MEMLOC" );     # Move up to next RAM location
-}
 
-# Dump the RAM up to current PC
-my $i = 0;
-while (1) {
-    # First check if there is anything on this row
-    my $skip = 1;
-    foreach my $j ( 0 .. 15 ) {
-        $skip = 0 if ( $RAM[ $i + $j ] );
+    # We got here with a real instruction.
+    die("Unrecognised instruction $op\n") if ( !defined( $Instruction{$op} ) );
+    my $posn = $Instruction{$op}{posn};
+    my $len  = $Instruction{$op}{len};
+    my ( $hival, $loval );
+    printf( "%04x: $op ", $PC ) if ($easdebug);
+
+    $RAM[ $PC++ ] = $posn;
+    my $val;
+    printf( "\t%02x\n", $posn ) if ( $easdebug && ( $len == 1 ) );
+
+    if ( $len > 1 ) {
+        $val   = getValue($addr); $hival = $val >> 8; $loval = $val & 0xff;
     }
-    if ( $skip == 0 ) {
-        printf( "%03x: ", $i );
-        foreach my $j ( 0 .. 15 ) { printf( "%02x ", $RAM[ $i + $j ] || 0 ); }
-        print("\n");
+    if ( $len == 2 ) {
+        $RAM[ $PC++ ] = $loval;
+        printf( "%02x\t%02x %02x\n", $loval, $posn, $loval ) if ($easdebug);
     }
-    $i += 16;
-    last if ( $i > $PC );
+    if ( $len == 3 ) {
+        $RAM[ $PC++ ] = $hival; $RAM[ $PC++ ] = $loval;
+        printf( "%04x\t%02x %02x %02x\n", $val, $posn, $hival, $loval )
+          if ($easdebug);
+    }
 }
 
 # Write out the program ROM
-open( my $OUT, ">", "program.rom" ) || die("Can't write to program.rom: $!\n");
-print( $OUT "v2.0 raw\n" );
-for my $i ( 0 .. ( 2**11 - 1 ) ) {
-    printf( $OUT "%x ", $RAM[$i] ? $RAM[$i] : 0 );
-    print( $OUT "\n" ) if ( ( $i % 8 ) == 7 );
+if ( $0 =~ m{eas$} ) {
+    open( my $OUT, ">", "program.rom" )
+      || die("Can't write to program.rom: $!\n");
+    print( $OUT "v2.0 raw\n" );
+    for my $i ( 0 .. ( 2**12 - 1 ) ) {
+        printf( $OUT "%02x ", $RAM[$i] ? $RAM[$i] : 0 );
+        print( $OUT "\n" ) if ( ( $i % 16 ) == 15 );
+        print( $OUT " " )  if ( ( $i % 16 ) == 7 );
+    }
+    close($OUT);
+    exit(0);
 }
-close($OUT);
 
-# Simulate
-print("\nSimulating\n");
+# Given a new B value, work out the N and Z flags. Truncate the value
+sub flags {
+    my $B = shift;
+    my $N = ( $B & 0x80 ) ? 1 : 0;
+    my $Z = ( $B == 0 ) ? 1 : 0;
+    return ( $B & 0xff, $N, $Z );
+}
+
+# Given two arguments, add them. Return the result and the N, Z, V, C flags
+sub add {
+    my ( $A, $B ) = @_;
+    my ( $sum, $N, $Z, $V, $C );
+    $sum = $A + $B;
+    $C = ( $sum & 0x100 ) ? 1 : 0;
+
+    my $asign = $A & 0x80;
+    my $bsign = $B & 0x80;
+    my $rsign = $sum & 0x80;
+    $V = ( ( $asign == $bsign ) && ( $rsign != $asign ) ) ? 1 : 0;
+    ( $sum, $N, $Z ) = flags($sum);
+    return ( $sum, $N, $Z, $V, $C );
+}
+
+# Given two arguments, subtract them. Return the result & the N, Z, V, C flags
+sub minus {
+    my ( $A, $B ) = @_;
+    my ( $sum, $N, $Z, $V, $C );
+    $sum = $A - $B;
+    $C = ( $sum & 0x100 ) ? 1 : 0;
+
+    my $asign = $A & 0x80;
+    my $bsign = $B & 0x80;
+    my $rsign = $sum & 0x80;
+    $V = ( ( $asign == $bsign ) && ( $rsign != $asign ) ) ? 1 : 0;
+    ( $sum, $N, $Z ) = flags($sum);
+    return ( $sum, $N, $Z, $V, $C );
+}
+
+# Given a PC value, disassemble and print the instruction at that location
+sub disasm {
+    my $PC     = shift;
+    my $opcode = $Instlist[ $RAM[$PC] ]->[0];
+    my $len    = $Instlist[ $RAM[$PC] ]->[1];
+
+    printf( "%04x: %s ", $PC, $opcode );
+    printf( "%02x", $RAM[ $PC + 1 ] ) if ( $len == 2 );
+    printf( "%02x%02x", $RAM[ $PC + 1 ], $RAM[ $PC + 2 ] ) if ( $len == 3 );
+    print("\t");
+}
+
+# Simulate the program
 $PC = 0;
-my ( $A, $N, $Z, $V, $C ) = ( 0, 0, 0, 0, 0 );
-while (1) {
-    # Keep 12 bits in PC, needed for when we +1 to the PC below
-    $PC &= 0xfff;
-    my $op = $Revop[ $RAM[$PC] >> 4 ];
-    my $addr = ( ( $RAM[$PC] & 0xf ) << 8 ) + $RAM[ $PC + 1 ];
-    printf( "%03x: %3s %03x\t", $PC, $op, $addr );
+my ( $A, $B, $N, $Z, $V, $C ) = ( 0, 0, 0, 0, 0, 0 );
 
-    if ( $op eq "HLT" ) { print("Halting\n"); exit(0); }
-    if ( $op eq "JMP" ) {
-	if ($PC == ($addr+1)) {
-	  print("Infinite loop detected, halting\n"); exit(0);
-	}
-	$PC = $addr+1; printf( "PC now %03x\n", $PC ); next;
-    }
-    if ( $op eq "JZ" ) {
-        $PC = $addr+1 if ($Z); printf( "PC now %03x\n", $PC );
-        next if ($Z);
-    }
-    if ( $op eq "JNE" ) {
-        $PC = $addr+1 if ($N); printf( "PC now %03x\n", $PC );
-        next if ($N);
-    }
-    if ( $op eq "JC" ) {
-        $PC = $addr+1 if ($C); printf( "PC now %03x\n", $PC );
-        next if ($C);
-    }
-    if ( $op eq "JV" ) {
-        $PC = $addr+1 if ($V); printf( "PC now %03x\n", $PC );
-        next if ($V);
-    }
+if ( $0 =~ m{esim$} ) {
+    print("Simulating...\n");
 
-    if ( $op eq "LD" ) {
-        $A = $RAM[$addr]; printf( "A now %02x\n", $A );
-    }
-    if ( $op eq "STO" ) {
-        $RAM[$addr] = $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
-    }
-    if ( $op eq "AND" ) {
-        $RAM[$addr] &= $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
-    }
-    if ( $op eq "OR" ) {
-        $RAM[$addr] |= $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
-    }
-    if ( $op eq "XOR" ) {
-        $RAM[$addr] ^= $A; printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
-    }
+    while (1) {
 
-    # Do addition and subtraction
-    my $a = $RAM[$addr];
-    my $b = $A;
-    if ( $op eq "INC" ) { $b = 1; $op = "ADD"; }
-    if ( $op eq "DEC" ) { $b = 1; $op = "SUB"; }
+        # Keep 16 bits in PC, needed for when we +1 to the PC below
+        $PC &= 0xffff;
 
-    if ( $op eq "ADD" ) {
-        my $sum = $RAM[$addr] += $A;
-        $C = 1 if ( $sum & 0x100 );
+        my $inst = $RAM[$PC];
+        if ( !defined( $Instlist[$inst] ) ) {
+            printf( "Undefined instruction 0x%x\n", $inst );
+            exit(1);
+        }
 
-        my $asign = $a & 0x80;
-        my $bsign = $b & 0x80;
-        my $rsign = $sum & 0x80;
-        $V = 1 if ( ( $asign == $bsign ) && ( $rsign != $asign ) );
+        # Get the instruction name and length
+        my ( $opname, $len ) = @{ $Instlist[$inst] };
+        disasm($PC) if ($debug);
 
-        $RAM[$addr] = $sum & 0xff;
-        printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
+        # Get any value in the instruction
+        my $val;
+        $val = $RAM[ $PC + 1 ] if ( $len == 2 );
+        $val = ( $RAM[ $PC + 1 ] << 8 ) + $RAM[ $PC + 2 ] if ( $len == 3 );
+        $PC += $len;
+
+        if ( $opname eq 'adda' ) {
+            ( $A, $N, $Z, $V, $C ) = add( $A, $B );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'suba' ) {
+            ( $A, $N, $Z, $V, $C ) = minus( $A, $B );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'anda' ) {
+            ( $A, $N, $Z ) = flags( $A & $B );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'ora' ) {
+            ( $A, $N, $Z ) = flags( $A | $B );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'xora' ) {
+            ( $A, $N, $Z ) = flags( $A ^ $B );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'jmp' ) {
+            if ( $PC == ( $val + $len ) ) {
+                print("Infinite loop detected, halting\n"); exit(0);
+            }
+            $PC = $val;
+            printf( "PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'tba' ) {
+            ( $A, $N, $Z ) = flags($B);
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'incb' ) {
+            ( $B, $N, $Z ) = flags( $B + 1 );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'addb' ) {
+            ( $B, $N, $Z, $V, $C ) = add( $A, $B );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'subb' ) {
+            ( $B, $N, $Z, $V, $C ) = minus( $A, $B );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'andb' ) {
+            ( $B, $N, $Z ) = flags( $A & $B );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'orb' ) {
+            ( $B, $N, $Z ) = flags( $A | $B );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'xorb' ) {
+            ( $B, $N, $Z ) = flags( $A ^ $B );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'tab' ) {
+            ( $B, $N, $Z ) = flags($A);
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'lca' ) {
+            ( $A, $N, $Z ) = flags($val);
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'lcb' ) {
+            ( $B, $N, $Z ) = flags($val);
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'addm' ) {
+            ( $RAM[$val], $N, $Z, $V, $C ) = add( $A, $B );
+            printf( "RAM[$val] now %02x\n", $RAM[$val] ) if ($debug); next;
+        }
+        if ( $opname eq 'subm' ) {
+            ( $RAM[$val], $N, $Z, $V, $C ) = minus( $A, $B );
+            printf( "RAM[$val] now %02x\n", $RAM[$val] ) if ($debug); next;
+        }
+        if ( $opname eq 'andm' ) {
+            ( $RAM[$val], $N, $Z ) = flags( $A & $B );
+            printf( "RAM[$val] now %02x\n", $RAM[$val] ) if ($debug); next;
+        }
+        if ( $opname eq 'orm' ) {
+            ( $RAM[$val], $N, $Z ) = flags( $A | $B );
+            printf( "RAM[$val] now %02x\n", $RAM[$val] ) if ($debug); next;
+        }
+        if ( $opname eq 'xorm' ) {
+            ( $RAM[$val], $N, $Z ) = flags( $A ^ $B );
+            printf( "RAM[$val] now %02x\n", $RAM[$val] ) if ($debug); next;
+        }
+        if ( $opname eq 'lma' ) {
+            ( $A, $N, $Z ) = flags( $RAM[$val] );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'lmb' ) {
+            ( $B, $N, $Z ) = flags( $RAM[$val] );
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'jlt' ) {
+            $PC = $val if ($N);
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jeq' ) {
+            $PC = $val if ($Z);
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jne' ) {
+            $PC = $val if ( !$Z );
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jge' ) {
+            $PC = $val if ( !$N );
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jle' ) {
+            $PC = $val if ( $Z || $N );
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jgt' ) {
+            $PC = $val if ( !$Z && !$N );
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jcs' ) {
+            $PC = $val if ($C);
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jvs' ) {
+            $PC = $val if ($V);
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jcc' ) {
+            $PC = $val if ( !$C );
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'jvc' ) {
+            $PC = $val if ( !$V );
+            printf( "NZVC $N$Z$V$C PC now %04x\n", $PC ) if ($debug); next;
+        }
+        if ( $opname eq 'sma' ) {
+            ( $RAM[$val], $N, $Z ) = flags($A);
+            printf( "RAM[%04x] now %02x\n", $val, $RAM[$val] ) if ($debug);
+            next;
+        }
+        if ( $opname eq 'smb' ) {
+            ( $RAM[$val], $N, $Z ) = flags($B);
+            printf( "RAM[%04x] now %02x\n", $val, $RAM[$val] ) if ($debug);
+            next;
+        }
+        if ( $opname eq 'lia' ) {
+            ( $A, $N, $Z ) = flags( $RAM[ $val + $B ] );
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'sia' ) {
+            ( $RAM[ $val + $B ], $N, $Z ) = flags($A);
+            printf( "RAM[%04x] now %02x\n", $val + $B, $A ) if ($debug); next;
+        }
+        if ( $opname eq 'incm' ) {
+            ( $RAM[$val], $N, $Z ) = flags( $RAM[$val] + 1 );
+            printf( "RAM[%04x] now %02x\n", $val + $B, $A ) if ($debug); next;
+        }
+        if ( $opname eq 'ttoa' ) {
+            if ($debug) { print( "> ", chr($A), " <\n" ); }
+            else { print( chr($A) ); } next;
+        }
+        if ( $opname eq 'ttob' ) {
+            if ($debug) { print( "> ", chr($B), " <\n" ); }
+            else { print( chr($B) ); }
+            next;
+        }
+        if ( $opname eq 'ttia' ) {
+            while (1) {
+                $val = getchar();
+                last if ( defined($val) );
+            }
+            ( $A, $N, $Z ) = flags($val);
+            printf( "A now %02x\n", $A ) if ($debug); next;
+        }
+        if ( $opname eq 'ttib' ) {
+            while (1) {
+                $val = getchar();
+                last if ( defined($val) );
+            }
+            ( $B, $N, $Z ) = flags($val);
+            printf( "B now %02x\n", $B ) if ($debug); next;
+        }
+        if ( $opname eq 'sub' ) {
+            ( undef, $N, $Z, $V, $C ) = minus( $A, $B );
+            print( "flags now $N$Z$V$C\n" ) if ($debug); next;
+        }
+        die("Unrecognised instruction $opname\n");
     }
-    if ( $op eq "SUB" ) {
-        my $sum = $RAM[$addr] -= $A;
-        $C = 1 if ( $sum & 0x100 );
-
-        my $asign = $a & 0x80;
-        my $bsign = $b & 0x80;
-        my $rsign = $sum & 0x80;
-        $V = 1 if ( ( $asign == $bsign ) && ( $rsign != $asign ) );
-
-        $RAM[$addr] = $sum & 0xff;
-        printf( "RAM %03x now %02x\n", $addr, $RAM[$addr] );
-    }
-    if ( $op eq "SHO" ) { printf( "\t\tShowing %02x\n", $A ); }
-
-    $Z = ( $RAM[$addr] == 0 ) ? 1 : 0;
-    $N = ( $RAM[$addr] < 0 )  ? 1 : 0;
-    $PC += 2;
 }
-exit(0);

@@ -1,13 +1,10 @@
-all: alu.rom program.rom topctrl.rom
+all: botctrl.rom botalu.rom
 
-clean:
-	rm -f alu.rom botctrl.rom program.rom topctrl.rom
+botctrl.rom: gen_controlrom control_logic
+	./gen_controlrom control_logic
 
-alu.rom:
+botalu.rom: gen_romalu
 	./gen_romalu
 
-topctrl.rom:
-	./gen_controlrom
-
-program.rom:
-	./eas fib.s
+clean:
+	rm -f *.rom

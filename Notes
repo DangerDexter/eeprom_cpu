@@ -1,0 +1,148 @@
+Saturday 19 August  08:12:32 AEST 2017
+--------------------------------------
+On to my 3rd CPU design. This time it's more symmetric with A and B regs
+before the ALU and no ALU result or flags capture afterwards. Seemed to be
+good up to the point where I want to jump on flags.
+
+I wanted to implement JGT when A > B. But we have to do a subtract A-B,
+which we can do in the previous instruction. Unfortunately, the jump
+instruction probably won't have the ALUop "sub", so the ALU flags in the
+jump instruction won't reflect the subtraction.
+
+Now I'm thinking of putting back the flags register in the ALU, but that will
+add a phase to many instructions as I wait for the flags to be stored before
+their value can be output by the ALU.
+
+IDT74FST32390Q octal 2:1 multiplexer bus switch
+
+OK, I put the flags back in and I've implemented the jump instructions.
+
+Saturday 19 August  20:00:22 AEST 2017
+--------------------------------------
+I want to implement indexed memory load/saves. I can work out how to
+do LIA, A=mem[addr+B], but there is no way that I can implement either
+SIA mem[addr+B]=A or SIB mem[addr+A]=B.
+
+I'm considering putting an 8-bit adder and mux in front of (or after) the
+LMA register so it can load the lo-byte of an address or lo-byte+A.
+But that's going to cost another 4 chips! Damn!
+
+I had a different idea. We copy A into LMAR as-is, so that we have to set
+arrays up on a page boundary. We just need a controlled buffer from A to
+the data bus so that we can copy into the LMAR. Is this a good enough idea?
+
+Well, I implemented implemented the Awrite and controlled buffer on A
+output to data bus. LIB works, but I'm not really happy with this. It sucks.
+But right now I can't think of a better solution.
+
+Sunday 20 August  10:03:55 AEST 2017
+------------------------------------
+I tried another solution which was to have the existing 3-bit ALUop but
+to pass in a 4th bit to have two "banks" of ALU operations, so I could
+change the ALU operation within a single instruction. I still could not
+get anything to work, and it was a kludge.
+
+Therefore, I've bit the bullet and added an adder & mux so I can choose
+MAR or MAR+B. This gives proper indexed addressing, but it's going to
+cost a heap more chips :-( At least six more chips.
+
+I've got basic fib.s working but no conversion into decimal as yet.
+
+Sun 20 Aug 14:24:45 AEST 2017
+-----------------------------
+Time for another chip count.
+  - one main ROM (memory)			AT28C64B-15PU
+  - one main static RAM (memory)		A623308A-70SF
+  - one AND chip with 4 AND gates (addressing)	74HC08
+  - one inverter chip with 6 inverters (ditto)	SN74HC04NE4
+  - four 4-bit counters (PC)                    CD74HC161E
+  - two 8-bit mux (PC)				IDT74FST32390Q
+  - four 8-bit registers (IR, LMAR, HMAR, A)    CD74HC273E
+  - two ROMs (ALU)				AT28C64B-15PU
+  - one 4-bit counter/register (ALU)		CD74HC161E
+  - two controlled buffers (UART, ALU)		051719X
+  - one UART					UM245R
+  - two 8-bit mux (indexing)			IDT74FST32390Q
+  - four 4-bit adders (indexing)		CD74HC283E
+  - two ROMs (control)				AT28C64B-15PU
+  - one 4-bit counter (control)			CD74HC161E
+  - one 556 (clock)                             NE556AN
+  - one OR gate (clock)                         74HC32
+--------
+Total: 31 chips in total
+
+Optional: two hex to 7-seg decoders             MC14495
+
+Ben Eater uses 10K pulldown resistors.
+
+Sun 20 Aug 15:45:26 AEST 2017
+-----------------------------
+OK, decimal Fibonnaci now works, so I'm happy.
+
+Sun 20 Aug 22:44:36 AEST 2017
+-----------------------------
+I was going to sleep and I realised that I could used several controlled
+buffers as a multiplexer: I just have to enable only one at a time to
+put only one value on the output.
+
+For the address bus, I need three output values: PC, MAR, MAR+A. So I
+can use six 74HC245 octal bus transceivers (16 bits per pair), one
+74HC139 2-to-4 decoder (2 bits input, active low, drives the output enable
+lines on the 74HC245s), and four 74HC283 4-bit adders to do the adding of A
+to the MAR.
+
+Oh, and I ordered a second pile of stuff mainly from Ebay. Resistors, LEDs,
+capacitors, hookup wire, DIP switches, trimpots and a UM245R USB to parallel
+chip. I watched some more of Ben Eater's videos today, they are great.
+
+Mon 21 Aug 09:19:22 AEST 2017
+-----------------------------
+Actually 74HC244 is a unidirectional tri-state bus driver whereas 74HC245 is
+bi-directional. So either could be used, probably better to use 74HC244.
+
+I've made the change to the ep16cpu.circ to have a 4-way mux which more closely
+matches what I will build with real chips. I've had to rearrange the control
+lines, and I've fixed up the control ROM. Works.
+
+Because the PC's value doesn't go anywhere near the data bus, there is no
+way to capture it so that we can JSR and then RTS. No, I'm not going to
+fix that, even though there is now a spare mux input which could be used to
+restore the PC's value :-)
+
+Mon 21 Aug 10:51:33 AEST 2017
+-----------------------------
+Chip count time again.
+
+  - four 4-bit counters (PC)                    CD74HC161E
+  - one 2-to-4 decoder (address mux)		74HC139
+  - six tri-state bus drivers (address mux)	74HC244
+  - one main ROM (memory)			AT28C64B-15PU
+  - one main static RAM (memory)		A623308A-70SF
+  - one AND chip with 4 AND gates (addressing)	74HC08
+  - one inverter chip with 6 inverters (ditto)	SN74HC04NE4
+  - five 8-bit registers (IR, LMAR, HMAR, A, B) CD74HC273E
+  - one UART					UM245R
+  - two tri-state bus drivers (UART, ALU)	74HC244
+  - two ROMs (ALU)				AT28C64B-15PU
+  - one 4-bit counter/register (ALU)		CD74HC161E
+  - four 4-bit adders (indexing)		CD74HC283E
+  - two ROMs (control)				AT28C64B-15PU
+  - one 4-bit counter (control)			CD74HC161E
+  - one 556 (clock)                             NE556AN
+  - one OR gate (clock)                         74HC32
+-------
+Total: 35 chips, sigh!
+Optional: two hex to 7-seg decoders             MC14495
+
+Mon 21 Aug 14:30:32 AEST 2017
+-----------------------------
+I rebuilt the simulator and it now runs fib.s fine.
+
+Tue 22 Aug 15:45:34 AEST 2017
+-----------------------------
+I've mocked up the chip layout on eight breadboards in Fritzing and
+printed the result out on an A3 sheet. It's bigger than it will be,
+but it looks good.
+
+I started work on a compiler for a very cut-down language called `E'
+for the computer. So far I have a working grammar but nothing else.

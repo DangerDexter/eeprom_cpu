@@ -7,9 +7,8 @@ use warnings;
 my @ROM;
 
 my %Opcode = (
-    ADD => 0, SUB => 1, AND => 2, OR  => 3,
-    XOR => 4, INC => 5, DEC => 6, STO => 7
-);
+    ADD  => 0, SUB   => 1,   AND => 2,  OR  => 3,
+    XOR  => 4, PASSA => 5, PASSB => 6, INCB => 7);
 
 # Reversed opcode
 my @Revop;
@@ -17,62 +16,69 @@ foreach my $k ( keys(%Opcode) ) {
     $Revop[ $Opcode{$k} ] = $k;
 }
 
-foreach my $opcode ( 0 .. 7) {
-  my $op= $Revop[$opcode];
-  foreach my $a ( 0 .. 15) {
-    foreach my $b ( 0 .. 15) {
-      my $result;
-      $result= $a & $b if ($op eq "AND" );
-      $result= $a | $b if ($op eq "OR" );
-      $result= $a ^ $b if ($op eq "XOR" );
-      $result= $b      if ($op eq "STO" );
+# Given a ROM name and an increment/decrement value, create the ROM
+sub make_rom {
+    my ( $file, $incdec ) = @_;
 
-      foreach my $oldzc ( 0 .. 3 ) {
-	my $oldz= ($oldzc >> 1) & 1;
-	my $oldc= $oldzc & 1;
+    foreach my $opcode ( 0 .. 7 ) {
+        my $op = $Revop[$opcode];
+        foreach my $a ( 0 .. 15 ) {
+            foreach my $b ( 0 .. 15 ) {
+                my $result;
+                $result = $a & $b if ( $op eq "AND" );
+                $result = $a | $b if ( $op eq "OR" );
+                $result = $a ^ $b if ( $op eq "XOR" );
+                $result = $a      if ( $op eq "PASSA" );
+                $result = $b      if ( $op eq "PASSB" );
 
-      	if ($op eq "INC") { $b= 1; $op="ADD"; }
-      	if ($op eq "DEC") { $b= 1; $op="SUB"; }
-      	$result= $a + $b + $oldc if ($op eq "ADD" );
-      	$result= $a - $b - $oldc if ($op eq "SUB" );
-      	my $bit5= $result & 0x10;
-      	$result &= 0xf;
+		# Deal with inputs from lower ALU
+                foreach my $oldzc ( 0 .. 3 ) {
+                    my $oldz = ( $oldzc >> 1 ) & 1;
+                    my $oldc = $oldzc & 1;
 
-      	my ($n, $z, $v, $c)= (0,0,0,0);
-      	$n=1 if ($result & 0x8);
-      	$z=1 if (($result == 0) && ($oldz==0));
-      	$c=1 if $bit5;
+                    $result = $a + $b + $oldc      if ( $op eq "ADD" );
+                    $result = $a - $b - $oldc      if ( $op eq "SUB" );
+                    $result = $b + $incdec + $oldc if ( $op eq "INCB" );
+                    my $bit5 = $result & 0x10;
+                    $result &= 0xf;
 
-      	# Get the sign bits for both inputs and the result
-      	my $asign= $a & 0x8;
-      	my $bsign= $b & 0x8;
-        my $rsign= $result & 0x8;
+                    my ( $n, $z, $v, $c ) = ( 0, 0, 0, 0 );
+                    $n = 1 if ( $result & 0x8 );
+                    $z = 1 if ( ( $result == 0 ) && ( $oldz == 1 ) );
+                    $c = 1 if $bit5;
 
-        # Inputs have same sign, different from result sign
-        $v= 1 if (($asign == $bsign) && ($rsign != $asign));
+                    # Get the sign bits for both inputs and the result
+                    my $asign = $a & 0x8;
+                    my $bsign = $b & 0x8;
+                    my $rsign = $result & 0x8;
 
-        # Create the ROM value
-        my $romval= ($n << 7) + ($z << 6) + ($v << 5) + ($c << 4) + $result;
+                    # Inputs have same sign, different from result sign
+                    $v = 1 if ( ( $asign == $bsign ) && ( $rsign != $asign ) );
 
-        if (($op eq "ADD") || ($op eq "SUB")) {
-        printf("op %x a %02x b %02x => rom %03x, n$n z$z v$v c$c \n",
-      		$opcode, $a & 0xff, $b & 0xff, $romval);
-      	}
+                    # Create the ROM value
+                    my $romval = ( $n << 7 ) + ( $z << 6 )
+			       + ( $v << 5 ) + ( $c << 4 ) + $result;
 
-      	# Store in the ROM
-      	my $location= ($opcode << 10) + (($a & 0xff) << 6) +
-			(($b & 0xff) << 2) + $oldzc;
-      	$ROM[ $location ] = $romval;
-      }
+                    # Store in the ROM
+                    my $location =
+                      ( $opcode << 10 ) + ( ( $a & 0xff ) << 6 ) +
+                      ( ( $b & 0xff ) << 2 ) + $oldzc;
+                    $ROM[$location] = $romval;
+                }
+            }
+        }
     }
-  }
+
+    # Write out the ROM
+    open( my $OUT, ">", $file ) || die("Can't write to $file: $!\n");
+    print( $OUT "v2.0 raw\n" );
+    for my $i ( 0 .. ( 2**13 - 1 ) ) {
+        printf( $OUT "%x ", $ROM[$i] ? $ROM[$i] : 0 );
+        print( $OUT "\n" ) if ( ( $i % 8 ) == 7 );
+    }
+    close($OUT);
 }
 
-# Write out the ROM
-open(my $OUT, ">", "alu.rom") || die("Can't write to alu.rom: $!\n");
-print($OUT "v2.0 raw\n");
-for my $i (0 .. (2**13 - 1)) {
-  printf($OUT "%x ", $ROM[$i] ? $ROM[$i] : 0);
-  print($OUT "\n") if (($i % 8)==7);
-}
-close($OUT);
+make_rom( "botalu.rom", 1 );
+make_rom( "topalu.rom", 0 );
+exit(0);

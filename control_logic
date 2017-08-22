@@ -1,0 +1,380 @@
+# Instruction opcodes
+ADDA=00
+SUBA=01
+ANDA=02
+ORA=03
+XORA=04
+JMP=05
+TBA=06
+INCB=07
+ADDB=08
+SUBB=09
+ANDB=0a
+ORB=0b
+XORB=0c
+TAB=0d
+LCA=0e
+LCB=0f
+ADDM=10
+SUBM=11
+ANDM=12
+ORM=13
+XORM=14
+LMA=15
+LMB=16
+JLT=17
+JEQ=18
+JNE=19
+JGE=1a
+JLE=1b
+JGT=1c
+SMA=1d
+SMB=1e
+JCS=1f
+JVS=20
+JCC=21
+JVC=22
+TTIA=23
+TTIB=24
+TTOA=25
+TTOB=26
+LIA=27
+NOP=28
+SUB=29
+NOP=2a
+NOP=2b
+NOP=2c
+SIA=2d
+NOP=2e
+INCM=2f
+NOP=30
+NOP=31
+NOP=32
+NOP=33
+NOP=34
+NOP=35
+NOP=36
+NOP=37
+NOP=38
+NOP=39
+NOP=3a
+NOP=3b
+NOP=3c
+NOP=3d
+NOP=3e
+NOP=3f
+
+# Control lines
+PCload=1
+PCincr=2
+RAMwrite=4
+IRload=8
+HMload=10
+LMload=20
+Aload=40
+Bload=80
+ALUwrite=100
+TTYread=200
+TTYwrite=400
+MEMdisa=800
+FlagWr=1000
+PCmux=0000		# Not needed, used when not mentioned
+MARmux=2000
+MARidxmux=4000
+Unusedmux=6000		# As yet unused value
+PhaseReset=8000
+
+# ALU operations. Not really needed here as they are not
+# used to determine the control ROM contents
+ALUadd=0
+ALUsub=1
+ALUand=2
+ALUor= 3
+ALUxor=4
+ALUpassa=5
+ALUpassb=6
+ALUincb=7
+
+# ALU flags
+nflag=8
+zflag=4
+vflag=2
+cflag=1
+
+# Instruction phases
+phase0=0
+phase1=1
+phase2=2
+phase3=3
+phase4=4
+phase5=5
+phase6=6
+phase7=7
+
+ADDA	# A= A + B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Aload, FlagWr
+phase2: PhaseReset
+
+SUBA	# A= A - B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Aload, FlagWr
+phase2: PhaseReset
+
+ANDA	# A= A & B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Aload, FlagWr
+phase2: PhaseReset
+
+ORA	# A= A | B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Aload, FlagWr
+phase2: PhaseReset
+
+XORA	# A= A ^ B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Aload, FlagWr
+phase2: PhaseReset
+
+JMP     # PC= MAR
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, PCload
+phase4: PhaseReset
+
+TBA	# A= B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Aload, FlagWr
+phase2: PhaseReset
+
+INCB	# B++
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+ADDB	# B= A + B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+SUBB	# B= A - B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+ANDB	# B= A & B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+ORB	# B= A | B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+XORB	# B= A ^ B
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+TAB	# B= A
+phase0: PCincr, IRload
+phase1: MEMdisa, ALUwrite, Bload, FlagWr
+phase2: PhaseReset
+
+LCA     # Load constant into A. 2-byte instruction. XXX is it on ALUop A?
+phase0: PCincr, IRload
+phase1: PCincr, Aload, FlagWr
+phase2: PhaseReset
+
+LCB     # Load constant into B. 2-byte instruction. XXX is it on ALUop B?
+phase0: PCincr, IRload
+phase1: PCincr, Bload, FlagWr
+phase2: PhaseReset
+
+ADDM
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload, FlagWr
+phase3: MARmux, ALUwrite, RAMwrite
+phase5: PhaseReset
+
+SUBM
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload, FlagWr
+phase3: MARmux, ALUwrite, RAMwrite
+phase5: PhaseReset
+
+ANDM
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload, FlagWr
+phase3: MARmux, ALUwrite, RAMwrite
+phase5: PhaseReset
+
+ORM
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload, FlagWr
+phase3: MARmux, ALUwrite, RAMwrite
+phase5: PhaseReset
+
+XORM
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload, FlagWr
+phase3: MARmux, ALUwrite, RAMwrite
+phase5: PhaseReset
+
+LMA     # A = mem[MAR] XXX Is it on ALUop A?
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, Aload, FlagWr
+phase4: PhaseReset
+
+LMB     # B = mem[MAR] XXX Is it on ALUop B?
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, Bload, FlagWr
+phase4: PhaseReset
+
+SMA	# mem[MAR]= A
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, ALUwrite, RAMwrite
+phase4: PhaseReset
+
+SMB	# mem[MAR]= B
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, ALUwrite, RAMwrite
+phase4: PhaseReset
+
+TTOA	# Send A to the terminal
+phase0: PCincr, IRload
+phase1: MEMdisa, TTYwrite, ALUwrite
+phase2: PhaseReset
+
+TTOB	# Send B to the terminal
+phase0: PCincr, IRload
+phase1: MEMdisa, TTYwrite, ALUwrite
+phase2: PhaseReset
+
+TTIA	# Read A from the terminal XXX Is it on ALUop A?
+phase0: PCincr, IRload
+phase1: MEMdisa, TTYread, Aload, FlagWr
+phase2: PhaseReset
+
+TTIB	# Read B from the terminal XXX Is it on ALUop B?
+phase0: PCincr, IRload
+phase1: MEMdisa, TTYread, Bload, FlagWr
+phase2: PhaseReset
+
+JLT	# PC= MAR if N set
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3,nflag: MARmux, PCload
+phase4: PhaseReset
+
+JEQ	# PC= MAR if Z set
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3,zflag: MARmux, PCload
+phase4: PhaseReset
+
+JNE	# PC= MAR if Z clear
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, PCload
+phase3,zflag: PhaseReset
+phase4: PhaseReset
+
+JGE	# PC= MAR if N clear
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, PCload
+phase3,nflag: PhaseReset
+phase4: PhaseReset
+
+JLE	# PC= MAR if either Z or N are set
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3,zflag: MARmux, PCload
+phase3,nflag: MARmux, PCload
+phase4: PhaseReset
+
+JGT	# PC= MAR if both Z and N are clear
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, PCload
+phase3,nflag,zflag: PhaseReset
+phase4: PhaseReset
+
+JCS	# PC= MAR if C set
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3,cflag: MARmux, PCload
+phase4: PhaseReset
+
+JVS     # PC= MAR if V set
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3,vflag: MARmux, PCload
+phase4: PhaseReset
+
+JVC     # PC= MAR if V clear
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, PCload
+phase3,vflag: PhaseReset
+phase4: PhaseReset
+
+JCC     # PC= MAR if C clear
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, PCload
+phase3,cflag: PhaseReset
+phase4: PhaseReset
+
+LIA	# A= mem[MAR+B]
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, Aload, FlagWr, MARidxmux
+phase4: PhaseReset
+
+SIA	# mem[MAR+B]= A
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, ALUwrite, RAMwrite, MARidxmux
+phase4: PhaseReset
+
+INCM	# mem[MAR]++
+phase0: PCincr, IRload
+phase1: PCincr, HMload
+phase2: PCincr, LMload
+phase3: MARmux, Bload, FlagWr
+phase4: MARmux, ALUwrite, RAMwrite
+phase5: PhaseReset
+
+SUB	# A - B, just to set the flags
+phase0: PCincr, IRload
+phase1: FlagWr
+phase2: PhaseReset
