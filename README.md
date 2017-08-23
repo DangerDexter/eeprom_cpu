@@ -63,7 +63,7 @@ Here is the current list of instructions:
 | ADDB	| B= A + B              |
 | SUBB	| B= A - B              |
 | ANDB	| B= A & B              |
-| ORB	| B= A | B              |
+| ORB	| B= A or B             |
 | XORB	| B= A ^ B              |
 | TAB	| B= A                  |
 | LCA   | Load constant into A  |
@@ -123,6 +123,10 @@ The ALU operation and the two operands come in from the left: Arg1 and Arg2. The
 
 As the EEPROM is programmable, any set of eight operations on two 4-bit inputs can be programmed into the EEPROM.
 
+There is a limitation with this approach. Each ROM only receives half of
+the two 8-bit inputs. This prevents the implementation of shifts and roll
+ALU operations.
+
 # The PC and Address Logic
 
 ![PC logic](https://raw.githubusercontent.com/DoctorWkt/eeprom_cpu/master/Figs/pclogic.png)
@@ -131,9 +135,9 @@ Above is the PC and address logic as implemented in Logisim. One of three
 address values can be placed on the address bus, which runs vertically in the
 diagram from the multiplexer down to the ROM and RAM. The address value can be:
 
-+ the program counter
-+ the value of the 16-bit memory address register (MAR)
-+ the value of the 16-bit memory address register (MAR) with the B value added in. This allows indexed addressing to be done.
++ PC: the program counter
++ MAR: the value of the 16-bit memory address register
++ MARidx: the value of the MAR with the B value added in. This allows indexed addressing to be done.
 
 The PC is implemented as a presettable 16-bit counter. When the PCincr
 control line is enabled, the PC's value increments. When the PCload
@@ -158,7 +162,7 @@ We now need some logic to control all of this. We need these control lines (as s
 + Bload: load the B register from the data bus
 + ALUwrite: place the ALU's output onto the data bus
 + MEMdisa: disable the RAM and ROM, so that the ALU output can be sent to either the A or B registers
-+ FlagWr: latch the NZCV flags from the ALU. This allows these to be set in one instruction, e.g. a subtraction, and then tested in a second instruction, e.g. a jump if negative instruction.
++ FlagWr: latch the NZVC flags from the ALU. This allows these to be set in one instruction (e.g. a subtraction) and then tested in a second instruction (e.g. a jump if negative instruction)
 + MAMux (2 bits): Choose either the PC, the MAR, or MAR+B as the address to be placed on the address bus.
 
 We have to enable and disable all of these in some sequence in order to perform each CPU instruction. One way to build this logic would be to hard-wire a bunch of logic gates, but this would  violate my design goal of a minimal number of chips.
@@ -181,7 +185,7 @@ instruction.
 
 Here is what I’ve got to so far. I’ve written a Perl script to read in a program in (my own) assembly language and convert this to the binary instructions. The script outputs the code in a format that Logisim can load into a simulated ROM chip. The script also simulates the assembly program: this was useful to confirm that things worked.
 
-I also have a working Logisim version of the CPU. I’ve written Perl scripts to generate the contents of the EEPROMs in the ALU and the EEPROMs in the control logic. I’ve been able to run a program to calculate the Fibonacci numbers from 2 up to 0xe9 (233).
+I also have a working Logisim version of the CPU. I’ve written Perl scripts to generate the contents of the EEPROMs in the ALU and the EEPROMs in the control logic. I’ve been able to run a program to calculate the Fibonacci numbers from 2 up to 233.
 
 Here is my estimate of the chips I need to build this.
 
@@ -212,7 +216,7 @@ I will need some other components:
 + several breadboards
 + some tinned wire
 + several LEDs for showing individual lines
-+ caps for the 555 circuit
++ resistors and caps for the 555 circuit
 
 Here is a short video of the CPU in Logisim calculating the Fibonacci series:
 
